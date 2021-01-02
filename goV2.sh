@@ -42,6 +42,11 @@ GREEN="32m"    # Success message
 YELLOW="33m"   # Warning message
 BLUE="36m"     # Info message
 
+V6_PROXY=""
+res=`curl -sL -4 ip.sb`
+if [[ "$?" != "0" ]]; then
+    V6_PROXY="https://gh.hijk.art/"
+fi
 
 #########################
 while [[ $# > 0 ]]; do
@@ -174,9 +179,9 @@ downloadV2Ray(){
     rm -rf /tmp/v2ray
     mkdir -p /tmp/v2ray
     if [[ "${DIST_SRC}" == "jsdelivr" ]]; then
-        DOWNLOAD_LINK="https://cdn.jsdelivr.net/gh/v2ray/dist/v2ray-linux-${VDIS}.zip"
+        DOWNLOAD_LINK="https://cdn.jsdelivr.net/gh/v2fly/dist/v2ray-linux-${VDIS}.zip"
     else
-        DOWNLOAD_LINK="https://github.com/v2ray/v2ray-core/releases/download/${NEW_VER}/v2ray-linux-${VDIS}.zip"
+        DOWNLOAD_LINK="${V6_PROXY}https://github.com/v2fly/v2ray-core/releases/download/${NEW_VER}/v2ray-linux-${VDIS}.zip"
     fi
     colorEcho ${BLUE} "Downloading V2Ray: ${DOWNLOAD_LINK}"
     curl ${PROXY} -L -H "Cache-Control: no-cache" -o ${ZIPFILE} ${DOWNLOAD_LINK}
@@ -254,11 +259,11 @@ getVersion(){
         VER="$(/usr/bin/v2ray/v2ray -version 2>/dev/null)"
         RETVAL=$?
         CUR_VER="$(normalizeVersion "$(echo "$VER" | head -n 1 | cut -d " " -f2)")"
-        TAG_URL="https://api.github.com/repos/v2ray/v2ray-core/releases/latest"
+        TAG_URL="${V6_PROXY}https://api.github.com/repos/v2fly/v2ray-core/releases/latest"
         NEW_VER="$(normalizeVersion "$(curl ${PROXY} -s "${TAG_URL}" --connect-timeout 10| grep 'tag_name' | cut -d\" -f4)")"
 
         if [[ "${NEW_VER}" =~ "https" ]]; then
-          NEW_VER="v4.22.1"
+          NEW_VER="v4.33.0"
         fi
         if [[ $? -ne 0 ]] || [[ $NEW_VER == "" ]]; then
             colorEcho ${RED} "Failed to fetch release information. Please check your network or try again."
@@ -327,8 +332,32 @@ installV2Ray(){
 
 
 installInitScript(){
-    if [[ -n "${SYSTEMCTL_CMD}" ]] && [[ ! -f "/etc/systemd/system/v2ray.service" && ! -f "/lib/systemd/system/v2ray.service" ]]; then
-        unzip -oj "$1" "$2systemd/v2ray.service" -d '/etc/systemd/system' && \
+    if [[ -n "${SYSTEMCTL_CMD}" ]]; then
+        systemctl disable v2ray
+        rm -rf /etc/systemd/system/v2ray.service /lib/systemd/system/v2ray.service /etc/systemd/system/v2ray.service.d
+        cat >/etc/systemd/system/v2ray.service<<-EOF
+[Unit]
+Description=V2Ray Service
+Documentation=https://www.v2ray.com/ https://www.v2fly.org/
+After=network.target nss-lookup.target
+
+[Service]
+# If the version of systemd is 240 or above, then uncommenting Type=exec and commenting out Type=simple
+#Type=exec
+Type=simple
+# This service runs as root. You may consider to run it as another user for security concerns.
+# By uncommenting User=nobody and commenting out User=root, the service will run as user nobody.
+# More discussion at https://github.com/v2ray/v2ray-core/issues/1011
+User=root
+#User=nobody
+NoNewPrivileges=true
+ExecStart=/usr/bin/v2ray/v2ray -config /etc/v2ray/config.json
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        systemctl daemon-reload
         systemctl enable v2ray.service
     elif [[ -n "${SERVICE_CMD}" ]] && [[ ! -f "/etc/init.d/v2ray" ]]; then
         installSoftware 'daemon' && \
